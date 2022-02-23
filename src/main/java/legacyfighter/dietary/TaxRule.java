@@ -26,79 +26,68 @@ public class TaxRule {
     private Integer bSquareFactor;
     private Integer cSuqreFactor;
 
+    private Integer year;
+
     @ManyToOne
     private TaxConfig taxConfig;
 
-    public static TaxRule linearRule(int a, int b, String taxCode) {
-        TaxRule rule = new TaxRule();
-        rule.setLinear(true);
-        rule.setTaxCode(taxCode);
-        rule.setaFactor(a);
-        rule.setbSquareFactor(b);
-        rule.setTaxCode(taxCode);
-        return rule;
+    TaxRule(String taxCode, int aFactor, int bFactor, int year) {
+        isLinear = true;
+        this.taxCode = taxCode;
+        this.aFactor = aFactor;
+        this.bSquareFactor = bFactor;
+        this.year = year;
     }
 
+    TaxRule(String taxCode, int aSquareFactor, int bSquareFactor, int cSquareFactor, int year) {
+        this.taxCode = taxCode;
+        this.aSquareFactor = aSquareFactor;
+        this.bSquareFactor = bSquareFactor;
+        this.cSuqreFactor = cSquareFactor;
+        isSquare = true;
+        this.year = year;
+    }
 
+    public static TaxRule linearRule(int aFactor, int bFactor, int year, String taxCode) {
+        if (aFactor == 0) {
+            throw new IllegalStateException("Invalid aFactor");
+        }
+        return new TaxRule(taxCode, aFactor, bFactor, year);
+    }
+
+    public static TaxRule squareRule(int aSquareFactor, int bSquareFactor, int cSquareFactor, int year, String taxCode) {
+        if (aSquareFactor == 0) {
+            throw new IllegalStateException("Invalid aFactor");
+        }
+        return new TaxRule(taxCode, aSquareFactor, bSquareFactor, cSquareFactor, year);
+    }
 
     public boolean isLinear() {
         return isLinear;
-    }
-
-    public void setLinear(boolean linear) {
-        isLinear = linear;
     }
 
     public Integer getaFactor() {
         return aFactor;
     }
 
-    public void setaFactor(int aFactor) {
-        this.aFactor = aFactor;
-    }
-
     public Integer getbFactor() {
         return bFactor;
-    }
-
-    public void setbFactor(int bFactor) {
-        this.bFactor = bFactor;
     }
 
     public boolean isSquare() {
         return isSquare;
     }
 
-    public void setSquare(boolean square) {
-        isSquare = square;
-    }
-
     public Integer getaSquareFactor() {
         return aSquareFactor;
-    }
-
-    public void setaSquareFactor(int aSquareFactor) {
-        this.aSquareFactor = aSquareFactor;
     }
 
     public Integer getbSquareFactor() {
         return bSquareFactor;
     }
 
-    public void setbSquareFactor(int bSquareFactor) {
-        this.bSquareFactor = bSquareFactor;
-    }
-
     public Integer getcSuqreFactor() {
         return cSuqreFactor;
-    }
-
-    public void setcSuqreFactor(int cSuqreFactor) {
-        this.cSuqreFactor = cSuqreFactor;
-    }
-
-    public void setTaxCode(String taxCode) {
-        this.taxCode = taxCode;
     }
 
     @Override
@@ -110,7 +99,7 @@ public class TaxRule {
             return false;
         }
         TaxRule that = (TaxRule) o;
-        return taxCode.equals(that.getTaxCode());
+        return this.getTaxCode().equals(that.getTaxCode());
     }
 
     @Override
@@ -120,7 +109,7 @@ public class TaxRule {
 
 
     public String getTaxCode() {
-        return taxCode;
+        return "A. 899. " + year + taxCode;
     }
 
     public Long getId() {

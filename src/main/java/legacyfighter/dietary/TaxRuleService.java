@@ -7,7 +7,11 @@ import org.springframework.stereotype.Service;
 import javax.transaction.Transactional;
 import java.time.Instant;
 import java.time.Year;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class TaxRuleService {
@@ -23,31 +27,13 @@ public class TaxRuleService {
 
     @Transactional
     public void addTaxRuleToCountry(String countryCode, int aFactor, int bFactor, String taxCode) {
-        if (countryCode == null || countryCode.equals("") || countryCode.length() == 1) {
-            throw new IllegalStateException("Invalid country code");
-        }
-        if (aFactor == 0) {
-            throw new IllegalStateException("Invalid aFactor");
-
-        }
-        TaxRule taxRule = new TaxRule();
-        taxRule.setaFactor(aFactor);
-        taxRule.setbFactor(bFactor);
-        taxRule.setLinear(true);
-        int year = Year.now().getValue();
-        taxRule.setTaxCode("A. 899. " + year + taxCode);
+        TaxRule taxRule = TaxRule.linearRule(aFactor, bFactor, Year.now().getValue(), taxCode);
         TaxConfig taxConfig = taxConfigRepository.findByCountryCode(countryCode);
         if (taxConfig == null) {
             taxConfig = createTaxConfigWithRule(countryCode, taxRule);
             return;
         }
-        if (taxConfig.getMaxRulesCount() <= taxConfig.getTaxRules().size()) {
-            throw new IllegalStateException("Too many rules");
-        }
-
-        taxConfig.getTaxRules().add(taxRule);
-        taxConfig.setCurrentRulesCount(taxConfig.getCurrentRulesCount() + 1);
-        taxConfig.setLastModifiedDate(Instant.now());
+        taxConfig.add(taxRule);
 
         List<Order> byOrderState = orderRepository.findByOrderState(Order.OrderState.Initial);
 
@@ -62,74 +48,33 @@ public class TaxRuleService {
 
     @Transactional
     public TaxConfig createTaxConfigWithRule(String countryCode, TaxRule taxRule) {
-        TaxConfig taxConfig = new TaxConfig();
-        taxConfig.setCountryCode(countryCode);
-        taxConfig.getTaxRules().add(taxRule);
-        taxConfig.setCurrentRulesCount(taxConfig.getTaxRules().size());
-        taxConfig.setMaxRulesCount(10);
-        taxConfig.setLastModifiedDate(Instant.now());
-        if (countryCode == null || countryCode.equals("") || countryCode.length() == 1) {
-            throw new IllegalStateException("Invalid country code");
-        }
-
+        TaxConfig taxConfig = new TaxConfig(countryCode, taxRule);
         taxConfigRepository.save(taxConfig);
         return taxConfig;
     }
 
     @Transactional
     public TaxConfig createTaxConfigWithRule(String countryCode, int maxRulesCount, TaxRule taxRule) {
-        TaxConfig taxConfig = new TaxConfig();
-        taxConfig.setCountryCode(countryCode);
-        taxConfig.getTaxRules().add(taxRule);
-        taxConfig.setCurrentRulesCount(taxConfig.getTaxRules().size());
-        taxConfig.setMaxRulesCount(maxRulesCount);
-        taxConfig.setLastModifiedDate(Instant.now());
-        if (countryCode == null || countryCode.equals("") || countryCode.length() == 1) {
-            throw new IllegalStateException("Invalid country code");
-        }
-
+        TaxConfig taxConfig = new TaxConfig(countryCode, maxRulesCount, taxRule);
         taxConfigRepository.save(taxConfig);
         return taxConfig;
     }
 
     @Transactional
     public void addTaxRuleToCountry(String countryCode, int aFactor, int bFactor, int cFactor, String taxCode) {
-        if (aFactor == 0) {
-            throw new IllegalStateException("Invalid aFactor");
-        }
-        if (countryCode == null || countryCode.equals("") || countryCode.length() == 1) {
-            throw new IllegalStateException("Invalid country code");
-        }
-        TaxRule taxRule = new TaxRule();
-        taxRule.setaSquareFactor(aFactor);
-        taxRule.setbSquareFactor(bFactor);
-        taxRule.setcSuqreFactor(cFactor);
-        taxRule.setSquare(true);
-        int year = Year.now().getValue();
-        taxRule.setTaxCode("A. 899. " + year + taxCode);
+        TaxRule taxRule = TaxRule.squareRule(aFactor, bFactor, cFactor, Year.now().getValue(), taxCode);
         TaxConfig taxConfig = taxConfigRepository.findByCountryCode(countryCode);
         if (taxConfig == null) {
-            createTaxConfigWithRule(countryCode, taxRule);
+            taxConfig = createTaxConfigWithRule(countryCode, taxRule);
         }
-        taxConfig.getTaxRules().add(taxRule);
-        taxConfig.setCurrentRulesCount(taxConfig.getCurrentRulesCount() + 1);
-        taxConfig.setLastModifiedDate(Instant.now());
+        taxConfig.add(taxRule);
     }
 
     @Transactional
     public void deleteRule(Long taxRuleId, Long configId) {
         TaxRule taxRule = taxRuleRepository.getOne(taxRuleId);
         TaxConfig taxConfig = taxConfigRepository.getOne(configId);
-        if (taxConfig.getTaxRules().contains(taxRule)) {
-            if (taxConfig.getTaxRules().size() == 1) {
-                throw new IllegalStateException("Last rule in country config");
-            }
-            taxRuleRepository.delete(taxRule);
-            taxConfig.getTaxRules().remove(taxRule);
-            taxConfig.setLastModifiedDate(Instant.now());
-            taxConfig.setCurrentRulesCount(taxConfig.getCurrentRulesCount() - 1);
-        }
-
+        taxConfig.remove(taxRule);
     }
 
     @Transactional
@@ -142,7 +87,27 @@ public class TaxRuleService {
         return taxConfigRepository.findByCountryCode(countryCode).getCurrentRulesCount();
     }
 
-    public List<TaxConfig> findAllConfigs() {
-        return taxConfigRepository.findAll();
+    public Map<String, List<TaxRule>> findAllConfigs() {
+        List<TaxConfig> taxConfigs = taxConfigRepository.findAll();
+
+        Map<String, List<TaxRule>> map = new HashMap<>();
+        for (TaxConfig tax : taxConfigs) {
+            if (map.get(tax.getCountryCode()) == null) {
+                map.put(tax.getCountryCode(), tax.getTaxRules());
+            } else {
+                map.get(tax.getCountryCode()).addAll(tax.getTaxRules());
+            }
+        }
+        Map<String, List<TaxRule>> newRuleMap= new HashMap<>();
+        for (Map.Entry<String, List<TaxRule>> taxList : map.entrySet()) {
+            Collection<TaxRule> values = taxList.getValue();
+            List<TaxRule> newList = values
+                    .stream()
+                    .filter(Utils.distinctByKey(TaxRule::getTaxCode))
+                    .collect(Collectors.toList());
+            newRuleMap.put(taxList.getKey(), newList);
+        }
+
+        return newRuleMap;
     }
 }
